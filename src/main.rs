@@ -4,7 +4,7 @@ extern crate regex;
 extern crate semver;
 
 use clap::{Parser, Subcommand};
-use git2::{Repository, Status, StatusOptions};
+use git2::{DescribeFormatOptions, DescribeOptions, Repository, Status, StatusOptions};
 use regex::Regex;
 use semver::{BuildMetadata, Prerelease, Version};
 use std::{
@@ -73,22 +73,26 @@ fn open_repository(path: &str) -> Result<Repository, String> {
 }
 
 fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
-    let tag_names = match repo.tag_names(None) {
-        Ok(tags) => tags,
-        Err(err) => return Err(format!("{}", err)),
-    };
+    let mut opts = DescribeOptions::new();
+    let opts = opts.describe_tags();
 
-    let latest_tag: &str = tag_names
-        .get(tag_names.len() - 1)
-        .ok_or("No tags found in the repo")?;
-    let version_number = if (latest_tag.chars().next().unwrap() == 'v') {
-        &latest_tag[1..]
+    let mut format_opts = DescribeFormatOptions::new();
+    let format_opts = format_opts.abbreviated_size(0);
+
+    let version_str = repo
+        .describe(&opts)
+        .or(Err(format!("could not get tag")))?
+        .format(Some(&format_opts))
+        .unwrap();
+
+    let version_number = if (version_str.chars().next().unwrap() == 'v') {
+        &version_str[1..]
     } else {
-        latest_tag
+        &version_str
     };
     Version::parse(version_number).or(Err(format!(
         "error parsing version from git tag {}",
-        latest_tag
+        version_str
     )))
 }
 
