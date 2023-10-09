@@ -1,0 +1,21 @@
+repos:
+- repo: . 
+  rev: 0.1.0
+  hooks:
+  - id: git-semver-bump
+  - id: git-semver-check-tags
+
+- repo: local
+  hooks:
+    - id: cargo-fmt
+      name: cargo fmt
+      entry: cargo fmt --
+      language: system
+      types: [rust]
+      pass_filenames: false # This makes it a lot faster
+    - id: cargo-check
+      name: cargo check
+      entry: cargo check
+      language: system
+      types: [rust]
+      pass_filenames: false # This makes it a lot faster     
