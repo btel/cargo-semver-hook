@@ -78,10 +78,15 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
         Err(err) => return Err(format!("{}", err)),
     };
 
-    let latest_tag = tag_names
+    let latest_tag: &str = tag_names
         .get(tag_names.len() - 1)
         .ok_or("No tags found in the repo")?;
-    Version::parse(latest_tag).or(Err(format!(
+    let version_number = if (latest_tag.chars().next().unwrap() == 'v') {
+        &latest_tag[1..]
+    } else {
+        latest_tag
+    };
+    Version::parse(version_number).or(Err(format!(
         "error parsing version from git tag {}",
         latest_tag
     )))
