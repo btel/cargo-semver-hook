@@ -99,13 +99,12 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
         "error parsing version from git tag {}",
         version_str
     )));
-    log::debug!("Parsed git version {:?}", parsed_ver);
     parsed_ver
 }
 
-fn make_dev_prerelease(pre: Prerelease) -> Result<Prerelease, String> {
+fn make_dev_prerelease(pre: Prerelease, head_commit: &str) -> Result<Prerelease, String> {
     if pre.is_empty() {
-        return Ok(Prerelease::new("1.dev").unwrap());
+        return Ok(Prerelease::new(&format!("1.dev.g{}", head_commit)).unwrap());
     }
     let pre_str = pre.as_str();
     let pre_parts: Vec<&str> = pre.split("-").collect();
@@ -132,14 +131,19 @@ fn run_sem_ver(_paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
     let path = String::from("Cargo.toml");
 
     let repo = open_repository(&path)?;
+    log::debug!("Openned repository at {}", &repo.path().to_str().unwrap());
+    let head_ref = get_head_ref(&repo);
+
+    log::debug!("repo HEAD is at {}", &head_ref[0..5]);
 
     let sem_ver = get_latest_tag(&repo)?;
+    log::debug!("Parsed git version {}", sem_ver);
     let cargo_ver = get_cargo_version(&path)?;
     let new_version = Version {
         major: sem_ver.major,
         minor: sem_ver.minor,
         patch: sem_ver.patch + 1,
-        pre: make_dev_prerelease(sem_ver.pre)?,
+        pre: make_dev_prerelease(sem_ver.pre, &head_ref[0..5])?,
         build: BuildMetadata::EMPTY,
     };
     if cargo_ver <= new_version {
@@ -154,6 +158,11 @@ fn run_sem_ver(_paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
         println!("Version number {} is up-to-date", cargo_ver);
         Ok(())
     }
+}
+
+fn get_head_ref(repo: &Repository) -> String {
+    let revspec = repo.revparse("HEAD").unwrap();
+    format!("{}", revspec.from().unwrap().id())
 }
 
 fn run_check_tags() -> Result<(), String> {
