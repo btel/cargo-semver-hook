@@ -23,7 +23,11 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Bump cargo version from latest tag
-    Bump { path: Vec<String> },
+    Bump {
+        path: Vec<String>,
+        #[arg(long, action)]
+        dry_run: bool,
+    },
     /// Check if last release was tagged
     CheckTags {},
 }
@@ -96,7 +100,7 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
     )))
 }
 
-fn run(paths: &Vec<String>) -> Result<(), String> {
+fn run_sem_ver(paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
     let path = String::from("Cargo.toml");
 
     let repo = open_repository(&path)?;
@@ -113,8 +117,15 @@ fn run(paths: &Vec<String>) -> Result<(), String> {
             pre: Prerelease::new("dev.1").unwrap(),
             build: BuildMetadata::EMPTY,
         };
-        replace_version(&path, &format!("{}", new_version))
+        if (dry_run) {
+            println!("Created version number {} (dry-run)", new_version);
+            Ok(())
+        } else {
+            println!("Created version number {}", new_version);
+            replace_version(&path, &format!("{}", new_version))
+        }
     } else {
+        println!("Version number {} is up-to-date", cargo_ver);
         Ok(())
     }
 }
@@ -143,7 +154,7 @@ fn run_check_tags() -> Result<(), String> {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.command {
-        Commands::Bump { path } => run(&path),
+        Commands::Bump { path, dry_run } => run_sem_ver(&path, dry_run),
         Commands::CheckTags {} => run_check_tags(),
     };
 
