@@ -104,7 +104,7 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
 
 fn make_dev_prerelease(pre: Prerelease, head_commit: &str) -> Result<Prerelease, String> {
     if pre.is_empty() {
-        return Ok(Prerelease::new(&format!("1.dev.g{}", head_commit)).unwrap());
+        return Ok(Prerelease::new(&format!("dev.1.g{}", head_commit)).unwrap());
     }
     let pre_str = pre.as_str();
     let pre_parts: Vec<&str> = pre.split("-").collect();
