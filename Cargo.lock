@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "git-semver"
-version = "0.2.1-dev.2.ge740"
+version = "0.2.1"
 dependencies = [
  "clap",
  "env_logger",
