@@ -1,10 +1,13 @@
 extern crate clap;
+extern crate env_logger;
 extern crate git2;
+extern crate log;
 extern crate regex;
 extern crate semver;
 
 use clap::{Parser, Subcommand};
 use git2::{DescribeFormatOptions, DescribeOptions, Repository, Status, StatusOptions};
+use log::{debug, info};
 use regex::Regex;
 use semver::{BuildMetadata, Prerelease, Version};
 use std::{
@@ -81,7 +84,7 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
     let opts = opts.describe_tags();
 
     let mut format_opts = DescribeFormatOptions::new();
-    let format_opts = format_opts.abbreviated_size(0);
+    let format_opts = format_opts.abbreviated_size(4);
 
     let version_str = repo
         .describe(&opts)
@@ -94,10 +97,12 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
     } else {
         &version_str
     };
-    Version::parse(version_number).or(Err(format!(
+    let parsed_ver = Version::parse(version_number).or(Err(format!(
         "error parsing version from git tag {}",
         version_str
-    )))
+    )));
+    log::debug!("Parsed git version {:?}", parsed_ver);
+    parsed_ver
 }
 
 fn run_sem_ver(paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
@@ -152,6 +157,7 @@ fn run_check_tags() -> Result<(), String> {
 }
 
 fn main() {
+    env_logger::init();
     let cli = Cli::parse();
     let result = match cli.command {
         Commands::Bump { path, dry_run } => run_sem_ver(&path, dry_run),
