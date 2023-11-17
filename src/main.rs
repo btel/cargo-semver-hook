@@ -105,6 +105,28 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
     parsed_ver
 }
 
+fn make_dev_prerelease(pre: Prerelease) -> Result<Prerelease, String> {
+    let pre_str = pre.as_str();
+    let pre_parts: Vec<&str> = pre.split("-").collect();
+
+    let (n_commits_from_last_tag, last_commit) = match pre_parts[..] {
+        [n_commits, last_commit] => match n_commits.parse::<i32>() {
+            Ok(value) => Ok((value, last_commit)),
+            Err(_) => Err(()),
+        },
+        _ => Err(()),
+    }
+    .or(Err(format!(
+        "can't create dev prerelease from tag {}",
+        pre_str
+    )))?;
+    let new_pre_str = format!("dev.{}.{}", n_commits_from_last_tag + 1, last_commit);
+    Prerelease::new(&new_pre_str).or(Err(format!(
+        "prerelease string {} is not valid",
+        &new_pre_str
+    )))
+}
+
 fn run_sem_ver(paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
     let path = String::from("Cargo.toml");
 
@@ -114,12 +136,20 @@ fn run_sem_ver(paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
 
     let sem_ver = get_latest_tag(&repo)?;
     let cargo_ver = get_cargo_version(&path)?;
-    if cargo_ver <= sem_ver {
+    // git does not create valid semantic version so we need to supress prerelease for comparison
+    let sem_ver_no_pre = Version {
+        major: sem_ver.major,
+        minor: sem_ver.minor,
+        patch: sem_ver.patch,
+        pre: Prerelease::EMPTY,
+        build: BuildMetadata::EMPTY,
+    };
+    if cargo_ver <= sem_ver_no_pre {
         let new_version = Version {
             major: sem_ver.major,
-            minor: sem_ver.minor + 1,
-            patch: 0,
-            pre: Prerelease::new("dev.1").unwrap(),
+            minor: sem_ver.minor,
+            patch: sem_ver.patch + 1,
+            pre: make_dev_prerelease(sem_ver.pre)?,
             build: BuildMetadata::EMPTY,
         };
         if (dry_run) {
