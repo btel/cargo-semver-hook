@@ -89,6 +89,7 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
         .format(Some(&format_opts))
         .unwrap();
 
+    log::debug!("Found git version string {}", &version_str);
     let version_number = if version_str.chars().next().unwrap() == 'v' {
         &version_str[1..]
     } else {
@@ -103,6 +104,9 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
 }
 
 fn make_dev_prerelease(pre: Prerelease) -> Result<Prerelease, String> {
+    if pre.is_empty() {
+        return Ok(Prerelease::new("1.dev").unwrap());
+    }
     let pre_str = pre.as_str();
     let pre_parts: Vec<&str> = pre.split("-").collect();
 
@@ -128,8 +132,6 @@ fn run_sem_ver(_paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
     let path = String::from("Cargo.toml");
 
     let repo = open_repository(&path)?;
-
-    // let clean_dir = check_if_repo_clean(paths, &repo)?;
 
     let sem_ver = get_latest_tag(&repo)?;
     let cargo_ver = get_cargo_version(&path)?;
