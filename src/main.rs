@@ -6,14 +6,11 @@ extern crate regex;
 extern crate semver;
 
 use clap::{Parser, Subcommand};
-use git2::{DescribeFormatOptions, DescribeOptions, Repository, Status, StatusOptions};
-use log::{debug, info};
+use git2::{DescribeFormatOptions, DescribeOptions, Repository};
+
 use regex::Regex;
 use semver::{BuildMetadata, Prerelease, Version};
-use std::{
-    fs,
-    io::{self, Read, Write},
-};
+use std::{fs, io::Read};
 
 #[derive(Parser, Debug)]
 #[command(name = "git-semver")]
@@ -92,7 +89,7 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
         .format(Some(&format_opts))
         .unwrap();
 
-    let version_number = if (version_str.chars().next().unwrap() == 'v') {
+    let version_number = if version_str.chars().next().unwrap() == 'v' {
         &version_str[1..]
     } else {
         &version_str
@@ -127,7 +124,7 @@ fn make_dev_prerelease(pre: Prerelease) -> Result<Prerelease, String> {
     )))
 }
 
-fn run_sem_ver(paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
+fn run_sem_ver(_paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
     let path = String::from("Cargo.toml");
 
     let repo = open_repository(&path)?;
@@ -136,23 +133,15 @@ fn run_sem_ver(paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
 
     let sem_ver = get_latest_tag(&repo)?;
     let cargo_ver = get_cargo_version(&path)?;
-    // git does not create valid semantic version so we need to supress prerelease for comparison
-    let sem_ver_no_pre = Version {
+    let new_version = Version {
         major: sem_ver.major,
         minor: sem_ver.minor,
-        patch: sem_ver.patch,
-        pre: Prerelease::EMPTY,
+        patch: sem_ver.patch + 1,
+        pre: make_dev_prerelease(sem_ver.pre)?,
         build: BuildMetadata::EMPTY,
     };
-    if cargo_ver <= sem_ver_no_pre {
-        let new_version = Version {
-            major: sem_ver.major,
-            minor: sem_ver.minor,
-            patch: sem_ver.patch + 1,
-            pre: make_dev_prerelease(sem_ver.pre)?,
-            build: BuildMetadata::EMPTY,
-        };
-        if (dry_run) {
+    if cargo_ver <= new_version {
+        if dry_run {
             println!("Created version number {} (dry-run)", new_version);
             Ok(())
         } else {
