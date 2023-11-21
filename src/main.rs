@@ -5,7 +5,7 @@ extern crate log;
 extern crate regex;
 extern crate semver;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use git2::{DescribeFormatOptions, DescribeOptions, Repository};
 
 use regex::Regex;
@@ -20,11 +20,26 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum VersioningKindArg {
+    PEP440,
+    Semver,
+    SemverCommit,
+}
+
+enum VersioningKind {
+    PEP440,
+    Semver,
+    SemverCommit(String),
+}
+
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Bump cargo version from latest tag
     Bump {
         path: Vec<String>,
+        #[arg(long, value_enum)]
+        mode: VersioningKindArg,
         #[arg(long, action)]
         dry_run: bool,
     },
@@ -102,14 +117,24 @@ fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
     parsed_ver
 }
 
-fn make_dev_prerelease(pre: Prerelease, head_commit: &str) -> Result<Prerelease, String> {
+fn make_dev_prerelease(pre: Prerelease, mode: VersioningKind) -> Result<Prerelease, String> {
+    let mk_prerelease_str = |n_commits, mode| -> String {
+        match mode {
+            VersioningKind::PEP440 => format!("dev{}", n_commits),
+            VersioningKind::Semver => format!("dev.{}", n_commits),
+            VersioningKind::SemverCommit(base_commit) => {
+                format!("dev.{}.g{}", n_commits, base_commit)
+            }
+        }
+    };
+
     if pre.is_empty() {
-        return Ok(Prerelease::new(&format!("dev.1.g{}", head_commit)).unwrap());
+        return Ok(Prerelease::new(&mk_prerelease_str(1, mode)).unwrap());
     }
     let pre_str = pre.as_str();
     let pre_parts: Vec<&str> = pre.split("-").collect();
 
-    let (n_commits_from_last_tag, last_commit) = match pre_parts[..] {
+    let (n_commits_from_last_tag, _last_commit) = match pre_parts[..] {
         [n_commits, last_commit] => match n_commits.parse::<i32>() {
             Ok(value) => Ok((value, last_commit)),
             Err(_) => Err(()),
@@ -120,14 +145,18 @@ fn make_dev_prerelease(pre: Prerelease, head_commit: &str) -> Result<Prerelease,
         "can't create dev prerelease from tag {}",
         pre_str
     )))?;
-    let new_pre_str = format!("dev.{}.{}", n_commits_from_last_tag + 1, last_commit);
+    let new_pre_str = mk_prerelease_str(n_commits_from_last_tag + 1, mode);
     Prerelease::new(&new_pre_str).or(Err(format!(
         "prerelease string {} is not valid",
         &new_pre_str
     )))
 }
 
-fn run_sem_ver(_paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
+fn run_sem_ver(
+    _paths: &Vec<String>,
+    dry_run: bool,
+    mode_arg: VersioningKindArg,
+) -> Result<(), String> {
     let path = String::from("Cargo.toml");
 
     let repo = open_repository(&path)?;
@@ -139,11 +168,19 @@ fn run_sem_ver(_paths: &Vec<String>, dry_run: bool) -> Result<(), String> {
     let sem_ver = get_latest_tag(&repo)?;
     log::debug!("Parsed git version {}", sem_ver);
     let cargo_ver = get_cargo_version(&path)?;
+    //let mode = VersioningKind::SemverCommit((&head_ref[0..5]).to_string());
+    let mode = match mode_arg {
+        VersioningKindArg::PEP440 => VersioningKind::PEP440,
+        VersioningKindArg::Semver => VersioningKind::Semver,
+        VersioningKindArg::SemverCommit => {
+            VersioningKind::SemverCommit((&head_ref[0..5]).to_string())
+        }
+    };
     let new_version = Version {
         major: sem_ver.major,
         minor: sem_ver.minor,
         patch: sem_ver.patch + 1,
-        pre: make_dev_prerelease(sem_ver.pre, &head_ref[0..5])?,
+        pre: make_dev_prerelease(sem_ver.pre, mode)?,
         build: BuildMetadata::EMPTY,
     };
     if cargo_ver <= new_version {
@@ -190,7 +227,11 @@ fn main() {
     env_logger::init();
     let cli = Cli::parse();
     let result = match cli.command {
-        Commands::Bump { path, dry_run } => run_sem_ver(&path, dry_run),
+        Commands::Bump {
+            path,
+            mode,
+            dry_run,
+        } => run_sem_ver(&path, dry_run, mode),
         Commands::CheckTags {} => run_check_tags(),
     };
 
