@@ -152,6 +152,17 @@ fn make_dev_prerelease(pre: Prerelease, mode: VersioningKind) -> Result<Prerelea
     )))
 }
 
+// Check if repo is in dirty state (some files were modified)
+fn is_repo_dirty(repo: &Repository) -> bool {
+    for entry in repo.statuses(None).unwrap().into_iter() {
+        match entry.status() {
+            git2::Status::IGNORED | git2::Status::WT_NEW => continue,
+            _ => return true,
+        }
+    }
+    return false;
+}
+
 fn run_sem_ver(
     _paths: &Vec<String>,
     dry_run: bool,
@@ -162,6 +173,11 @@ fn run_sem_ver(
     let repo = open_repository(&path)?;
     log::debug!("Openned repository at {}", &repo.path().to_str().unwrap());
     let head_ref = get_head_ref(&repo);
+
+    if !is_repo_dirty(&repo) {
+        println!("No changes detected. Exiting.");
+        return Ok(());
+    }
 
     log::debug!("repo HEAD is at {}", &head_ref[0..5]);
 
@@ -205,6 +221,12 @@ fn get_head_ref(repo: &Repository) -> String {
 fn run_check_tags() -> Result<(), String> {
     let path = String::from(".");
     let repo = open_repository(&path)?;
+
+    if !is_repo_dirty(&repo) {
+        println!("No changes detected");
+        return Ok(());
+    }
+
     let obj = repo.revparse_single(&"HEAD:Cargo.toml").unwrap();
     let blob = obj.as_blob().unwrap();
     let mut content = String::new();
