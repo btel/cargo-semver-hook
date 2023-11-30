@@ -21,6 +21,6 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     - name: Run checks
-      run:
+      run: |
         cargo run check-tags
         cargo run bump --mode pep440
