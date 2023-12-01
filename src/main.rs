@@ -91,12 +91,12 @@ fn open_repository(path: &str) -> Result<Repository, String> {
     }
 }
 
-fn get_latest_tag(repo: &Repository) -> Result<Version, String> {
+fn get_latest_tag(repo: &Repository, abbrv_size: u32) -> Result<Version, String> {
     let mut opts = DescribeOptions::new();
     let opts = opts.describe_tags();
 
     let mut format_opts = DescribeFormatOptions::new();
-    let format_opts = format_opts.abbreviated_size(4);
+    let format_opts = format_opts.abbreviated_size(abbrv_size);
 
     let version_str = repo
         .describe(&opts)
@@ -181,7 +181,7 @@ fn run_sem_ver(
 
     log::debug!("repo HEAD is at {}", &head_ref[0..5]);
 
-    let sem_ver = get_latest_tag(&repo)?;
+    let sem_ver = get_latest_tag(&repo, 4)?;
     log::debug!("Parsed git version {}", sem_ver);
     let cargo_ver = get_cargo_version(&path)?;
     //let mode = VersioningKind::SemverCommit((&head_ref[0..5]).to_string());
@@ -234,7 +234,9 @@ fn run_check_tags() -> Result<(), String> {
         .read_to_string(&mut content)
         .or(Err(format!("Error reading file from index.")))?;
     let cargo_version = parse_cargo_version(&content)?;
-    let sem_ver = get_latest_tag(&repo)?;
+    log::debug!("Found cargo version {}", &cargo_version);
+    let sem_ver = get_latest_tag(&repo, 0)?;
+    log::debug!("Current repo version {}", &sem_ver);
     if cargo_version.pre.is_empty() {
         if sem_ver < cargo_version {
             return Err(format!(
