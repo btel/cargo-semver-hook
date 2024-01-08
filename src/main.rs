@@ -4,6 +4,7 @@ extern crate git2;
 extern crate log;
 extern crate regex;
 extern crate semver;
+extern crate tempfile;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use git2::{DescribeFormatOptions, DescribeOptions, Repository};
@@ -221,7 +222,10 @@ fn get_head_ref(repo: &Repository) -> String {
 fn run_check_tags() -> Result<(), String> {
     let path = String::from(".");
     let repo = open_repository(&path)?;
+    run_check_tags_repo(&repo)
+}
 
+fn run_check_tags_repo(repo: &Repository) -> Result<(), String> {
     if !is_repo_dirty(&repo) {
         println!("No changes detected");
         return Ok(());
@@ -267,4 +271,71 @@ fn main() {
         }
     };
     std::process::exit(exit_code);
+}
+
+#[cfg(test)]
+mod tests {
+
+    use git2::RepositoryInitOptions;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::Path;
+    use tempfile::TempDir;
+    use Repository;
+
+    use crate::run_check_tags_repo;
+
+    pub fn repo_init() -> (TempDir, Repository) {
+        let td = TempDir::new().unwrap();
+        let mut opts = RepositoryInitOptions::new();
+        opts.initial_head("main");
+        let repo = Repository::init_opts(td.path(), &opts).unwrap();
+        {
+            let mut config = repo.config().unwrap();
+            config.set_str("user.name", "name").unwrap();
+            config.set_str("user.email", "email").unwrap();
+            let mut index = repo.index().unwrap();
+            let id = index.write_tree().unwrap();
+
+            let tree = repo.find_tree(id).unwrap();
+            let sig = repo.signature().unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "initial\n\nbody", &tree, &[])
+                .unwrap();
+        }
+        (td, repo)
+    }
+
+    fn setup_repo(td: &TempDir, repo: &Repository) {
+        let mut index = repo.index().unwrap();
+        for n in 0..8 {
+            let name = format!("f{n}");
+            File::create(&td.path().join(&name))
+                .unwrap()
+                .write_all(name.as_bytes())
+                .unwrap();
+            index.add_path(Path::new(&name)).unwrap();
+        }
+        let id = index.write_tree().unwrap();
+        let sig = repo.signature().unwrap();
+        let tree = repo.find_tree(id).unwrap();
+        let parent = repo
+            .find_commit(repo.head().unwrap().target().unwrap())
+            .unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "another commit",
+            &tree,
+            &[&parent],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_clean_repo() {
+        let (td, repo) = repo_init();
+        setup_repo(&td, &repo);
+        assert!(run_check_tags_repo(&repo).is_ok());
+    }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "git-semver"
-version = "0.3.2"
+version = "0.3.3-dev1"
 
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
@@ -9,4 +9,5 @@ git2 = { version = "0.18.1", default-features = false }
 log = "0.4.20"
 regex = "1.9.6"
 semver = "1.0.19"
+tempfile = "3.9.0"
 toml = { version = "0.8.2", features = ["preserve_order"] }
