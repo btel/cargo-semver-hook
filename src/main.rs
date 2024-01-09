@@ -165,15 +165,23 @@ fn is_repo_dirty(repo: &Repository) -> bool {
 }
 
 fn run_sem_ver(
-    _paths: &Vec<String>,
+    paths: &Vec<String>,
     dry_run: bool,
     mode_arg: VersioningKindArg,
 ) -> Result<(), String> {
     let path = String::from("Cargo.toml");
-
     let repo = open_repository(&path)?;
-    log::debug!("Openned repository at {}", &repo.path().to_str().unwrap());
+    log::debug!("Opened repository at {}", &repo.path().to_str().unwrap());
+    run_sem_ver_repo(&repo, dry_run, mode_arg)
+}
+
+fn run_sem_ver_repo(
+    repo: &Repository,
+    dry_run: bool,
+    mode_arg: VersioningKindArg,
+) -> Result<(), String> {
     let head_ref = get_head_ref(&repo);
+    let path = String::from("Cargo.toml");
 
     if !is_repo_dirty(&repo) {
         println!("No changes detected. Exiting.");
@@ -241,6 +249,7 @@ fn run_check_tags_repo(repo: &Repository) -> Result<(), String> {
     log::debug!("Found cargo version {}", &cargo_version);
     let sem_ver = get_latest_tag(&repo, 0)?;
     log::debug!("Current repo version {}", &sem_ver);
+
     if cargo_version.pre.is_empty() {
         if sem_ver < cargo_version {
             return Err(format!(
@@ -283,7 +292,7 @@ mod tests {
     use tempfile::TempDir;
     use Repository;
 
-    use crate::run_check_tags_repo;
+    use crate::{run_check_tags_repo, run_sem_ver_repo, VersioningKindArg};
 
     pub fn repo_init() -> (TempDir, Repository) {
         let td = TempDir::new().unwrap();
@@ -307,6 +316,7 @@ mod tests {
 
     fn setup_repo(td: &TempDir, repo: &Repository) {
         let mut index = repo.index().unwrap();
+        let cargo_contents = "[package]\nname = \"test package\"\nversion = \"0.1.0\"\n";
         for n in 0..8 {
             let name = format!("f{n}");
             File::create(&td.path().join(&name))
@@ -315,6 +325,12 @@ mod tests {
                 .unwrap();
             index.add_path(Path::new(&name)).unwrap();
         }
+        let cargotoml_path = td.path().join("Cargo.toml");
+        File::create(&cargotoml_path)
+            .unwrap()
+            .write_all(cargo_contents.as_bytes())
+            .unwrap();
+        index.add_path(Path::new("Cargo.toml")).unwrap();
         let id = index.write_tree().unwrap();
         let sig = repo.signature().unwrap();
         let tree = repo.find_tree(id).unwrap();
@@ -330,6 +346,14 @@ mod tests {
             &[&parent],
         )
         .unwrap();
+        repo.tag(
+            "0.1.0",
+            &repo.revparse_single("HEAD").unwrap(),
+            &sig,
+            "initial version",
+            false,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -337,5 +361,21 @@ mod tests {
         let (td, repo) = repo_init();
         setup_repo(&td, &repo);
         assert!(run_check_tags_repo(&repo).is_ok());
+        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver).is_ok());
+    }
+
+    #[test]
+    fn test_dirty_repo() {
+        let (td, repo) = repo_init();
+        setup_repo(&td, &repo);
+        let mut index = repo.index().unwrap();
+        File::create(&td.path().join("f0"))
+            .unwrap()
+            .write_all("new".as_bytes())
+            .unwrap();
+        index.add_path(Path::new("f0")).unwrap();
+        assert!(run_check_tags_repo(&repo).is_ok());
+        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver).is_ok());
+        assert!(false);
     }
 }
