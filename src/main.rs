@@ -11,7 +11,7 @@ use git2::{DescribeFormatOptions, DescribeOptions, Repository};
 
 use regex::Regex;
 use semver::{BuildMetadata, Prerelease, Version};
-use std::{fs, io::Read};
+use std::{fs, io::Read, path::Path};
 
 #[derive(Parser, Debug)]
 #[command(name = "git-semver")]
@@ -78,10 +78,10 @@ fn parse_cargo_version(contents: &str) -> Result<Version, String> {
     )))
 }
 
-fn get_cargo_version(path: &str) -> Result<Version, String> {
-    match fs::read_to_string(path) {
+fn get_cargo_version(repo: &Repository) -> Result<Version, String> {
+    match get_cargo_toml(&repo) {
         Ok(contents) => parse_cargo_version(&contents),
-        Err(err) => Err(format!("Error reading `{}`: {}", path, err)),
+        Err(err) => Err(format!("Error reading Cargo.tom`: {}", err)),
     }
 }
 
@@ -164,6 +164,22 @@ fn is_repo_dirty(repo: &Repository) -> bool {
     return false;
 }
 
+// get cargo.toml from staging area
+
+fn get_cargo_toml(repo: &Repository) -> Result<String, String> {
+    let index = repo
+        .index()
+        .unwrap()
+        .get_path(Path::new("Cargo.toml"), 0)
+        .unwrap();
+    let blob = repo.find_blob(index.id).unwrap();
+    let mut content = String::new();
+    blob.content()
+        .read_to_string(&mut content)
+        .or(Err(format!("Error reading file from index.")))?;
+    Ok(content)
+}
+
 fn run_sem_ver(
     paths: &Vec<String>,
     dry_run: bool,
@@ -181,7 +197,6 @@ fn run_sem_ver_repo(
     mode_arg: VersioningKindArg,
 ) -> Result<(), String> {
     let head_ref = get_head_ref(&repo);
-    let path = String::from("Cargo.toml");
 
     if !is_repo_dirty(&repo) {
         println!("No changes detected. Exiting.");
@@ -192,7 +207,7 @@ fn run_sem_ver_repo(
 
     let sem_ver = get_latest_tag(&repo, 4)?;
     log::debug!("Parsed git version {}", sem_ver);
-    let cargo_ver = get_cargo_version(&path)?;
+    let cargo_ver = get_cargo_version(&repo)?;
     //let mode = VersioningKind::SemverCommit((&head_ref[0..5]).to_string());
     let mode = match mode_arg {
         VersioningKindArg::PEP440 => VersioningKind::PEP440,
@@ -208,13 +223,17 @@ fn run_sem_ver_repo(
         pre: make_dev_prerelease(sem_ver.pre, mode)?,
         build: BuildMetadata::EMPTY,
     };
-    if cargo_ver <= new_version {
+    if cargo_ver < new_version {
         if dry_run {
             println!("Created version number {} (dry-run)", new_version);
-            Ok(())
+            Err("Version is not up-to-date".to_string())
         } else {
             println!("Created version number {}", new_version);
-            replace_version(&path, &format!("{}", new_version))
+            replace_version(
+                repo.workdir().unwrap().join("Cargo.toml").to_str().unwrap(),
+                &format!("{}", new_version),
+            )?;
+            Err("Version is not up-to-date".to_string())
         }
     } else {
         println!("Version number {} is up-to-date", cargo_ver);
@@ -375,7 +394,9 @@ mod tests {
             .unwrap();
         index.add_path(Path::new("f0")).unwrap();
         assert!(run_check_tags_repo(&repo).is_ok());
-        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver).is_ok());
-        assert!(false);
+        assert_eq!(
+            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver),
+            Err("Version is not up-to-date".to_string())
+        );
     }
 }
