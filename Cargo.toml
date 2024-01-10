@@ -2,7 +2,6 @@
 name = "git-semver"
 version = "0.3.3"
 
-
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
 env_logger = "0.10.1"
