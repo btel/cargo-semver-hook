@@ -79,7 +79,7 @@ fn parse_cargo_version(contents: &str) -> Result<Version, String> {
 }
 
 fn get_cargo_version(repo: &Repository) -> Result<Version, String> {
-    match get_cargo_toml(&repo) {
+    match get_cargo_toml(repo) {
         Ok(contents) => parse_cargo_version(&contents),
         Err(err) => Err(format!("Error reading Cargo.tom`: {}", err)),
     }
@@ -100,22 +100,18 @@ fn get_latest_tag(repo: &Repository, abbrv_size: u32) -> Result<Version, String>
     let format_opts = format_opts.abbreviated_size(abbrv_size);
 
     let version_str = repo
-        .describe(&opts)
-        .or(Err(format!("could not get tag")))?
-        .format(Some(&format_opts))
+        .describe(opts)
+        .or(Err("could not get tag".to_string()))?
+        .format(Some(format_opts))
         .unwrap();
 
     log::debug!("Found git version string {}", &version_str);
-    let version_number = if version_str.chars().next().unwrap() == 'v' {
-        &version_str[1..]
-    } else {
-        &version_str
-    };
-    let parsed_ver = Version::parse(version_number).or(Err(format!(
+    let version_number = version_str.strip_prefix('v').unwrap_or(&version_str);
+
+    Version::parse(version_number).or(Err(format!(
         "error parsing version from git tag {}",
         version_str
-    )));
-    parsed_ver
+    )))
 }
 
 fn make_dev_prerelease(
@@ -137,7 +133,7 @@ fn make_dev_prerelease(
         return Ok(Prerelease::new(&mk_prerelease_str(1, mode)).unwrap());
     }
     let pre_str = pre.as_str();
-    let pre_parts: Vec<&str> = pre.split("-").collect();
+    let pre_parts: Vec<&str> = pre.split('-').collect();
 
     let (n_commits_from_last_tag, _last_commit) = match pre_parts[..] {
         [n_commits, last_commit] => match n_commits.parse::<i32>() {
@@ -169,7 +165,7 @@ fn is_repo_dirty(repo: &Repository) -> bool {
             _ => return true,
         }
     }
-    return false;
+    false
 }
 
 // get cargo.toml from staging area
@@ -184,12 +180,12 @@ fn get_cargo_toml(repo: &Repository) -> Result<String, String> {
     let mut content = String::new();
     blob.content()
         .read_to_string(&mut content)
-        .or(Err(format!("Error reading file from index.")))?;
+        .or(Err("Error reading file from index.".to_string()))?;
     Ok(content)
 }
 
 fn run_sem_ver(
-    paths: &Vec<String>,
+    _paths: &[String],
     dry_run: bool,
     mode_arg: VersioningKindArg,
 ) -> Result<(), String> {
@@ -204,13 +200,13 @@ fn run_sem_ver_repo(
     dry_run: bool,
     mode_arg: VersioningKindArg,
 ) -> Result<(), String> {
-    let head_ref = get_head_ref(&repo);
+    let head_ref = get_head_ref(repo);
 
     log::debug!("repo HEAD is at {}", &head_ref[0..5]);
 
-    let sem_ver = get_latest_tag(&repo, 4)?;
+    let sem_ver = get_latest_tag(repo, 4)?;
     log::debug!("Parsed git version {}", sem_ver);
-    let cargo_ver = get_cargo_version(&repo)?;
+    let cargo_ver = get_cargo_version(repo)?;
     //let mode = VersioningKind::SemverCommit((&head_ref[0..5]).to_string());
 
     let is_dirty = is_repo_dirty(repo);
@@ -222,9 +218,7 @@ fn run_sem_ver_repo(
     let mode = match mode_arg {
         VersioningKindArg::PEP440 => VersioningKind::PEP440,
         VersioningKindArg::Semver => VersioningKind::Semver,
-        VersioningKindArg::SemverCommit => {
-            VersioningKind::SemverCommit((&head_ref[0..5]).to_string())
-        }
+        VersioningKindArg::SemverCommit => VersioningKind::SemverCommit(head_ref[0..5].to_string()),
     };
     let new_version = Version {
         major: sem_ver.major,
@@ -263,28 +257,24 @@ fn run_check_tags() -> Result<(), String> {
 }
 
 fn run_check_tags_repo(repo: &Repository) -> Result<(), String> {
-    if !is_repo_dirty(&repo) {
+    if !is_repo_dirty(repo) {
         println!("No changes detected");
         return Ok(());
     }
 
-    let obj = repo.revparse_single(&"HEAD:Cargo.toml").unwrap();
+    let obj = repo.revparse_single("HEAD:Cargo.toml").unwrap();
     let blob = obj.as_blob().unwrap();
     let mut content = String::new();
     blob.content()
         .read_to_string(&mut content)
-        .or(Err(format!("Error reading file from index.")))?;
+        .or(Err("Error reading file from index.".to_string()))?;
     let cargo_version = parse_cargo_version(&content)?;
     log::debug!("Found cargo version {}", &cargo_version);
-    let sem_ver = get_latest_tag(&repo, 0)?;
+    let sem_ver = get_latest_tag(repo, 0)?;
     log::debug!("Current repo version {}", &sem_ver);
 
-    if cargo_version.pre.is_empty() {
-        if sem_ver < cargo_version {
-            return Err(format!(
-                "Please tag the release commit before adding new changes."
-            ));
-        }
+    if cargo_version.pre.is_empty() && sem_ver < cargo_version {
+        return Err("Please tag the release commit before adding new changes.".to_string());
     }
     Ok(())
 }
