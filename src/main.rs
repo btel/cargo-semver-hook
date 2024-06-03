@@ -158,8 +158,17 @@ fn make_dev_prerelease(
 }
 
 // Check if repo is in dirty state (some files were modified)
-fn is_repo_dirty(repo: &Repository) -> bool {
+fn is_repo_dirty(repo: &Repository, filetype: Option<&str>) -> bool {
     for entry in repo.statuses(None).unwrap().into_iter() {
+        if let Some(extension) = filetype {
+            if let Some(s) = entry.path() {
+                if !s.ends_with(extension) {
+                    continue;
+                }
+            } else {
+                continue;
+            };
+        };
         match entry.status() {
             git2::Status::IGNORED | git2::Status::WT_NEW => continue,
             _ => return true,
@@ -192,13 +201,14 @@ fn run_sem_ver(
     let path = String::from("Cargo.toml");
     let repo = open_repository(&path)?;
     log::debug!("Opened repository at {}", &repo.path().to_str().unwrap());
-    run_sem_ver_repo(&repo, dry_run, mode_arg)
+    run_sem_ver_repo(&repo, dry_run, mode_arg, Some("rs"))
 }
 
 fn run_sem_ver_repo(
     repo: &Repository,
     dry_run: bool,
     mode_arg: VersioningKindArg,
+    filetype: Option<&str>,
 ) -> Result<(), String> {
     let head_ref = get_head_ref(repo);
 
@@ -209,7 +219,7 @@ fn run_sem_ver_repo(
     let cargo_ver = get_cargo_version(repo)?;
     //let mode = VersioningKind::SemverCommit((&head_ref[0..5]).to_string());
 
-    let is_dirty = is_repo_dirty(repo);
+    let is_dirty = is_repo_dirty(repo, filetype);
 
     if (sem_ver == cargo_ver) && !is_dirty {
         println!("No changes detected. Exiting.");
@@ -257,7 +267,7 @@ fn run_check_tags() -> Result<(), String> {
 }
 
 fn run_check_tags_repo(repo: &Repository) -> Result<(), String> {
-    if !is_repo_dirty(repo) {
+    if !is_repo_dirty(repo, None) {
         println!("No changes detected");
         return Ok(());
     }
@@ -378,7 +388,7 @@ mod tests {
         let (td, repo) = repo_init();
         setup_repo(&td, &repo);
         assert!(run_check_tags_repo(&repo).is_ok());
-        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver).is_ok());
+        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver, None).is_ok());
     }
 
     #[test]
@@ -393,8 +403,9 @@ mod tests {
             .unwrap();
         index.add_path(Path::new("f0")).unwrap();
         assert!(run_check_tags_repo(&repo).is_ok());
+        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver, Some("rs")).is_ok());
         assert_eq!(
-            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver),
+            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver, None),
             Err("Version is not up-to-date".to_string())
         );
 
@@ -415,7 +426,7 @@ mod tests {
         index.add_path(Path::new("f0")).unwrap();
         commit(&repo, &mut index, "yet another commit");
         assert_eq!(
-            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver),
+            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver, None),
             Err("Version is not up-to-date".to_string())
         );
 
