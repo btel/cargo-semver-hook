@@ -201,13 +201,14 @@ fn run_sem_ver(
     let path = String::from("Cargo.toml");
     let repo = open_repository(&path)?;
     log::debug!("Opened repository at {}", &repo.path().to_str().unwrap());
-    run_sem_ver_repo(&repo, dry_run, mode_arg)
+    run_sem_ver_repo(&repo, dry_run, mode_arg, Some("rs"))
 }
 
 fn run_sem_ver_repo(
     repo: &Repository,
     dry_run: bool,
     mode_arg: VersioningKindArg,
+    filetype: Option<&str>,
 ) -> Result<(), String> {
     let head_ref = get_head_ref(repo);
 
@@ -218,7 +219,7 @@ fn run_sem_ver_repo(
     let cargo_ver = get_cargo_version(repo)?;
     //let mode = VersioningKind::SemverCommit((&head_ref[0..5]).to_string());
 
-    let is_dirty = is_repo_dirty(repo, Some("rs"));
+    let is_dirty = is_repo_dirty(repo, filetype);
 
     if (sem_ver == cargo_ver) && !is_dirty {
         println!("No changes detected. Exiting.");
@@ -387,7 +388,7 @@ mod tests {
         let (td, repo) = repo_init();
         setup_repo(&td, &repo);
         assert!(run_check_tags_repo(&repo).is_ok());
-        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver).is_ok());
+        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver, None).is_ok());
     }
 
     #[test]
@@ -402,8 +403,9 @@ mod tests {
             .unwrap();
         index.add_path(Path::new("f0")).unwrap();
         assert!(run_check_tags_repo(&repo).is_ok());
+        assert!(run_sem_ver_repo(&repo, true, VersioningKindArg::Semver, Some("rs")).is_ok());
         assert_eq!(
-            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver),
+            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver, None),
             Err("Version is not up-to-date".to_string())
         );
 
@@ -424,7 +426,7 @@ mod tests {
         index.add_path(Path::new("f0")).unwrap();
         commit(&repo, &mut index, "yet another commit");
         assert_eq!(
-            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver),
+            run_sem_ver_repo(&repo, false, VersioningKindArg::Semver, None),
             Err("Version is not up-to-date".to_string())
         );
 
