@@ -158,8 +158,17 @@ fn make_dev_prerelease(
 }
 
 // Check if repo is in dirty state (some files were modified)
-fn is_repo_dirty(repo: &Repository) -> bool {
+fn is_repo_dirty(repo: &Repository, filetype: Option<&str>) -> bool {
     for entry in repo.statuses(None).unwrap().into_iter() {
+        if let Some(extension) = filetype {
+            if let Some(s) = entry.path() {
+                if !s.ends_with(extension) {
+                    continue;
+                }
+            } else {
+                continue;
+            };
+        };
         match entry.status() {
             git2::Status::IGNORED | git2::Status::WT_NEW => continue,
             _ => return true,
@@ -209,7 +218,7 @@ fn run_sem_ver_repo(
     let cargo_ver = get_cargo_version(repo)?;
     //let mode = VersioningKind::SemverCommit((&head_ref[0..5]).to_string());
 
-    let is_dirty = is_repo_dirty(repo);
+    let is_dirty = is_repo_dirty(repo, Some("rs"));
 
     if (sem_ver == cargo_ver) && !is_dirty {
         println!("No changes detected. Exiting.");
@@ -257,7 +266,7 @@ fn run_check_tags() -> Result<(), String> {
 }
 
 fn run_check_tags_repo(repo: &Repository) -> Result<(), String> {
-    if !is_repo_dirty(repo) {
+    if !is_repo_dirty(repo, None) {
         println!("No changes detected");
         return Ok(());
     }

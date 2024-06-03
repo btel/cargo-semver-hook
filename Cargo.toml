@@ -1,6 +1,6 @@
 [package]
 name = "git-semver"
-version = "0.3.4"
+version = "0.3.5-dev1"
 
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
