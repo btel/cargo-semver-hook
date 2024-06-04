@@ -253,7 +253,7 @@ fn run_sem_ver_repo(
     let changed_from_last_version =
         check_rs_files_changed(repo, &latest_tag_str, "HEAD").map_err(|e| e.to_string())?;
 
-    if (sem_ver == cargo_ver) && !is_dirty && !changed_from_last_version {
+    if !is_dirty && !changed_from_last_version {
         println!("No rust files changed since last tag {}", latest_tag_str);
         return Ok(());
     };
