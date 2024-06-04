@@ -7,7 +7,7 @@ extern crate semver;
 extern crate tempfile;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use git2::{DescribeFormatOptions, DescribeOptions, Repository};
+use git2::{DescribeFormatOptions, DescribeOptions, DiffOptions, Repository};
 
 use regex::Regex;
 use semver::{BuildMetadata, Prerelease, Version};
@@ -204,6 +204,33 @@ fn run_sem_ver(
     run_sem_ver_repo(&repo, dry_run, mode_arg, Some("rs"))
 }
 
+fn check_rs_files_changed(
+    repo: &Repository,
+    old_commit: &str,
+    new_commit: &str,
+) -> Result<bool, git2::Error> {
+    let old_commit = repo.revparse_single(old_commit)?;
+    let new_commit = repo.find_commit(repo.revparse_single(new_commit)?.id())?;
+
+    let old_tree = old_commit.peel_to_tree()?;
+    let new_tree = new_commit.tree()?;
+
+    let mut diff_options = DiffOptions::new();
+    diff_options.include_typechange(true).ignore_filemode(false);
+
+    let diff = repo.diff_tree_to_tree(Some(&old_tree), Some(&new_tree), Some(&mut diff_options))?;
+
+    for delta in diff.deltas() {
+        if let Some(file_path) = delta.new_file().path() {
+            if file_path.extension().map_or(false, |ext| ext == "rs") {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
 fn run_sem_ver_repo(
     repo: &Repository,
     dry_run: bool,
@@ -221,10 +248,18 @@ fn run_sem_ver_repo(
 
     let is_dirty = is_repo_dirty(repo, filetype);
 
-    if (sem_ver == cargo_ver) && !is_dirty {
-        println!("No changes detected. Exiting.");
+    let latest_tag_str = get_latest_tag(repo, 0)?.to_string();
+
+    log::debug!("latest tag is {}", &latest_tag_str);
+
+    let changed_from_last_version =
+        check_rs_files_changed(repo, &latest_tag_str, "HEAD").unwrap_or(true);
+
+    if !is_dirty && !changed_from_last_version {
+        println!("No rust files changed since last tag {}", latest_tag_str);
         return Ok(());
     };
+
     let mode = match mode_arg {
         VersioningKindArg::PEP440 => VersioningKind::PEP440,
         VersioningKindArg::Semver => VersioningKind::Semver,
@@ -358,7 +393,7 @@ mod tests {
         let mut index = repo.index().unwrap();
         let cargo_contents = "[package]\nname = \"test package\"\nversion = \"0.1.0\"\n";
         for n in 0..8 {
-            let name = format!("f{n}");
+            let name = format!("f{n}.rs");
             File::create(&td.path().join(&name))
                 .unwrap()
                 .write_all(name.as_bytes())
@@ -419,11 +454,11 @@ mod tests {
         let (td, repo) = repo_init();
         setup_repo(&td, &repo);
         let mut index = repo.index().unwrap();
-        File::create(&td.path().join("f0"))
+        File::create(&td.path().join("f0.rs"))
             .unwrap()
             .write_all("new".as_bytes())
             .unwrap();
-        index.add_path(Path::new("f0")).unwrap();
+        index.add_path(Path::new("f0.rs")).unwrap();
         commit(&repo, &mut index, "yet another commit");
         assert_eq!(
             run_sem_ver_repo(&repo, false, VersioningKindArg::Semver, None),
