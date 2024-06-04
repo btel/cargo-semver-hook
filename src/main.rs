@@ -7,7 +7,7 @@ extern crate semver;
 extern crate tempfile;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use git2::{DescribeFormatOptions, DescribeOptions, Repository};
+use git2::{DescribeFormatOptions, DescribeOptions, DiffOptions, Repository};
 
 use regex::Regex;
 use semver::{BuildMetadata, Prerelease, Version};
@@ -204,6 +204,33 @@ fn run_sem_ver(
     run_sem_ver_repo(&repo, dry_run, mode_arg, Some("rs"))
 }
 
+fn check_rs_files_changed(
+    repo: &Repository,
+    old_commit: &str,
+    new_commit: &str,
+) -> Result<bool, git2::Error> {
+    let old_commit = repo.find_commit(repo.revparse_single(old_commit)?.id())?;
+    let new_commit = repo.find_commit(repo.revparse_single(new_commit)?.id())?;
+
+    let old_tree = old_commit.tree()?;
+    let new_tree = new_commit.tree()?;
+
+    let mut diff_options = DiffOptions::new();
+    diff_options.include_typechange(true).ignore_filemode(false);
+
+    let diff = repo.diff_tree_to_tree(Some(&old_tree), Some(&new_tree), Some(&mut diff_options))?;
+
+    for delta in diff.deltas() {
+        if let Some(file_path) = delta.new_file().path() {
+            if file_path.extension().map_or(false, |ext| ext == "rs") {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
+}
+
 fn run_sem_ver_repo(
     repo: &Repository,
     dry_run: bool,
@@ -221,10 +248,16 @@ fn run_sem_ver_repo(
 
     let is_dirty = is_repo_dirty(repo, filetype);
 
-    if (sem_ver == cargo_ver) && !is_dirty {
-        println!("No changes detected. Exiting.");
+    let latest_tag_str = sem_ver.to_string();
+
+    let changed_from_last_version =
+        check_rs_files_changed(repo, &latest_tag_str, "HEAD").map_err(|e| e.to_string())?;
+
+    if (sem_ver == cargo_ver) && !is_dirty && !changed_from_last_version {
+        println!("No rust files changed since last tag {}", latest_tag_str);
         return Ok(());
     };
+
     let mode = match mode_arg {
         VersioningKindArg::PEP440 => VersioningKind::PEP440,
         VersioningKindArg::Semver => VersioningKind::Semver,
