@@ -26,6 +26,14 @@ pub enum VersionHookError {
     },
     #[error("Program returned with error: `{0}`")]
     Other(String),
+    #[error("Could not find file `{0}` in the repository.")]
+    MissingFile(String),
+    #[error("Error reading repository")]
+    RepositoryError,
+    #[error("Please tag the release commit before adding new changes.")]
+    UntaggedRelease,
+    #[error("Version string error {0}")]
+    VersionError(String),
 }
 
 #[derive(Parser, Debug)]
@@ -73,26 +81,23 @@ fn replace_version(path: &str, ver: &str) -> anyhow::Result<()> {
     fs::write(path, replaced).with_context(|| format!("Error writing `{}`", path))
 }
 
-fn parse_cargo_version(contents: &str) -> Result<Version, String> {
-    let re = Regex::new(r#"(?m)^version = "(.+)""#).unwrap();
+fn parse_cargo_version(contents: &str) -> anyhow::Result<Version> {
+    let re = Regex::new(r#"(?m)^version = "(.+)""#).context("Invalid regex string")?;
     let ver_captures = re
         .captures_iter(contents)
         .next()
-        .ok_or(String::from("version number not found"))?;
+        .ok_or(VersionHookError::VersionError(String::from(
+            "version number not found",
+        )))?;
     let version = &ver_captures[1];
 
-    Version::parse(version).or(Err(format!(
-        "error parsing version from Cargo.toml {}",
-        version
-    )))
+    Version::parse(version)
+        .with_context(|| format!("error parsing version from Cargo.toml {}", version))
 }
 
 fn get_cargo_version(repo: &Repository) -> anyhow::Result<Version> {
-    let cargo_version = match get_cargo_toml(repo) {
-        Ok(contents) => parse_cargo_version(&contents),
-        Err(err) => Err(format!("Error reading Cargo.toml`: {}", err)),
-    };
-    cargo_version.map_err(|err| VersionHookError::Other(format!("{}", err)).into())
+    let contents = get_cargo_toml(repo).context(format!("Error reading Cargo.toml"))?;
+    parse_cargo_version(&contents)
 }
 
 fn open_repository(path: &str) -> anyhow::Result<Repository> {
@@ -178,17 +183,17 @@ fn is_repo_dirty(repo: &Repository, filetype: Option<&str>) -> bool {
 
 // get cargo.toml from staging area
 
-fn get_cargo_toml(repo: &Repository) -> Result<String, String> {
+fn get_cargo_toml(repo: &Repository) -> anyhow::Result<String> {
     let index = repo
         .index()
-        .unwrap()
+        .context("error openning repository")?
         .get_path(Path::new("Cargo.toml"), 0)
-        .unwrap();
-    let blob = repo.find_blob(index.id).unwrap();
+        .ok_or(VersionHookError::MissingFile("Cargo.toml".to_string()))?;
+    let blob = repo.find_blob(index.id)?;
     let mut content = String::new();
     blob.content()
         .read_to_string(&mut content)
-        .or(Err("Error reading file from index.".to_string()))?;
+        .context("Error reading file from index.".to_string())?;
     Ok(content)
 }
 
@@ -300,31 +305,30 @@ fn get_head_ref(repo: &Repository) -> String {
 fn run_check_tags() -> anyhow::Result<()> {
     let path = String::from(".");
     let repo = open_repository(&path)?;
-    match run_check_tags_repo(&repo) {
-        Ok(_) => Ok(()),
-        Err(s) => Err(VersionHookError::Other(s).into()),
-    }
+    run_check_tags_repo(&repo)
 }
 
-fn run_check_tags_repo(repo: &Repository) -> Result<(), String> {
+fn run_check_tags_repo(repo: &Repository) -> anyhow::Result<()> {
     if !is_repo_dirty(repo, None) {
         println!("No changes detected");
         return Ok(());
     }
 
-    let obj = repo.revparse_single("HEAD:Cargo.toml").unwrap();
-    let blob = obj.as_blob().unwrap();
+    let obj = repo
+        .revparse_single("HEAD:Cargo.toml")
+        .context("could not parse latest revision")?;
+    let blob = obj.as_blob().ok_or(VersionHookError::RepositoryError)?;
     let mut content = String::new();
     blob.content()
         .read_to_string(&mut content)
-        .or(Err("Error reading file from index.".to_string()))?;
+        .context("Error reading file from index.")?;
     let cargo_version = parse_cargo_version(&content)?;
     log::debug!("Found cargo version {}", &cargo_version);
-    let sem_ver = get_latest_tag(repo, 0).map_err(|err| format!("{}", err))?;
+    let sem_ver = get_latest_tag(repo, 0)?;
     log::debug!("Current repo version {}", &sem_ver);
 
     if cargo_version.pre.is_empty() && sem_ver < cargo_version {
-        return Err("Please tag the release commit before adding new changes.".to_string());
+        return Err(VersionHookError::UntaggedRelease.into());
     }
     Ok(())
 }
