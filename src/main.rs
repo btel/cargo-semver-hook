@@ -212,7 +212,7 @@ fn check_rs_files_changed(
     repo: &Repository,
     old_commit: &str,
     new_commit: &str,
-) -> Result<bool, git2::Error> {
+) -> anyhow::Result<bool> {
     let old_commit = repo.revparse_single(old_commit)?;
     let new_commit = repo.find_commit(repo.revparse_single(new_commit)?.id())?;
 

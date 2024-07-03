@@ -185,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "git-semver"
-version = "0.5.1-dev3"
+version = "0.5.1-dev4"
 dependencies = [
  "anyhow",
  "clap",
