@@ -11,12 +11,11 @@ extern crate thiserror;
 use clap::{Parser, Subcommand, ValueEnum};
 use git2::{DescribeFormatOptions, DescribeOptions, DiffOptions, Repository};
 
-use anyhow::{anyhow, Context, Error};
+use anyhow::Context;
 use regex::Regex;
 use semver::{BuildMetadata, Prerelease, Version};
 use std::{fs, io::Read, path::Path};
 use thiserror::Error;
-use VersionHookError::Outdated;
 
 #[derive(Error, Debug)]
 pub enum VersionHookError {
