@@ -25,9 +25,9 @@ jobs:
       run: cargo test --verbose
     - name: Run checks
       run: |
-        cargo run check-tags
+        cargo run git-semver check-tags
         git --version
         git status
         git log
         git describe --tags
-        cargo run bump --mode pep440
+        cargo run git-semver bump --mode pep440

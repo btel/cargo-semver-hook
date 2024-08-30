@@ -1,3 +1,7 @@
 
 /target/
 **/*.rs.bk
+/.idea/.gitignore
+/.idea/git-rust-semver-hook.iml
+/.idea/modules.xml
+/.idea/vcs.xml
