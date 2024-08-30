@@ -1,7 +1,7 @@
 -   id: git-semver-bump
     name: "Cargo Semantic Versioning"
     description: 'Set semantic version from git tags'
-    entry: git-semver bump
+    entry: cargo-git-semver bump
     language: rust
     types: [text, rust]
     exclude: '^.pre-commit-config.yaml$'
@@ -11,7 +11,7 @@
 -   id: git-semver-check-tags
     name: "Cargo Tag Sync - Check Tags"
     description: "Check if release was tagged"
-    entry: git-semver check-tags
+    entry: cargo-git-semver check-tags
     language: rust
     types: [text]
     stages: [pre-commit]

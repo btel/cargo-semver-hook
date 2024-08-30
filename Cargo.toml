@@ -1,9 +1,10 @@
 [package]
-name = "git-semver"
-version = "0.5.0"
+name = "cargo-git-semver"
+version = "0.5.1-dev1"
 
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
+clap-cargo = "0.14"
 env_logger = "0.10.1"
 git2 = { version = "0.18.1", default-features = false }
 log = "0.4.20"

@@ -4,13 +4,13 @@ repos:
     - id: git-semver-bump
       name: bump version
       language: system
-      entry: cargo run --bin git-semver bump --mode pep440
+      entry: cargo run --bin cargo-git-semver git-semver bump --mode pep440
       pass_filenames: false
       always_run: true
     - id: git-semver-check-tags
       name: check latest tag
       language: system
-      entry: cargo run --bin git-semver check-tags
+      entry: cargo run --bin cargo-git-semver git-semver check-tags
       pass_filenames: false
       always_run: false
     - id: cargo-fmt
