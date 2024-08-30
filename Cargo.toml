@@ -1,6 +1,6 @@
 [package]
 name = "cargo-git-semver"
-version = "0.5.1-dev2"
+version = "0.5.1-dev7"
 
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
